@@ -17,6 +17,7 @@ THE CONCEPT:
 """
 
 import math
+import os
 
 from utils import load_wordlist
 
@@ -46,7 +47,8 @@ KEYBOARD_WALKS = [
 #       rule sets. "p@ssw0rd" is still "password" to a computer.
 # ─────────────────────────────────────────────────────────────────
 LEET_REVERSE = str.maketrans({"@": "a", "3": "e", "1": "i", "0": "o",
-                              "$": "s", "7": "t", "8": "b", "5": "s"})
+                              "$": "s", "7": "t", "8": "b", "5": "s",
+                              "4": "a", "2": "z", "6": "g", "9": "g"})
 
 
 def get_length(password):
@@ -116,6 +118,38 @@ def calculate_entropy(password, charset_size):
     return round(len(password) * math.log2(charset_size), 2)
 
 
+def load_dictionary(wordlist_dir):
+    """Load English dictionary words into a set for fast lookup."""
+    path = os.path.join(wordlist_dir, "dictionary.txt")
+    words = load_wordlist(path)
+    return set(w.lower() for w in words if len(w) >= 4)
+
+
+def decompose_words(text, word_set):
+    """Greedily decompose text into dictionary words (min 4 chars).
+    Returns list of matched words or empty list if insufficient coverage.
+    """
+    s = text.lower()
+    matched = []
+    i = 0
+    while i < len(s):
+        best = None
+        for j in range(len(s), i, -1):
+            chunk = s[i:j]
+            if len(chunk) >= 4 and chunk in word_set:
+                best = chunk
+                break
+        if best:
+            matched.append(best)
+            i += len(best)
+        else:
+            i += 1
+    total_chars = sum(len(w) for w in matched)
+    if total_chars >= len(s) * 0.7 and len(matched) >= 2:
+        return matched
+    return []
+
+
 def detect_patterns(password, wordlist_dir="wordlists"):
     """
     WHY:  Humans are terrible at randomness. We use patterns without
@@ -134,61 +168,92 @@ def detect_patterns(password, wordlist_dir="wordlists"):
         "sequential": False,
         "common_word_embedded": False,
         "predictable_structure": False,
+        "embedded_words": [],
     }
 
+    # Load word lists once
+    tier1 = load_wordlist(f"{wordlist_dir}/tier1_top1000.txt")
+    dictionary = load_dictionary(wordlist_dir)
+
     # ── KEYBOARD WALK CHECK ──────────────────────────────────
-    # Check if any known keyboard sequence appears in the password
     for walk in KEYBOARD_WALKS:
         if walk in lower_pw:
             patterns["keyboard_walk"] = True
             break
 
     # ── REPEATED CHARACTERS CHECK ────────────────────────────
-    # If any character repeats 3+ times consecutively (aaa, 111, @@@)
     for i in range(len(lower_pw) - 2):
         if lower_pw[i] == lower_pw[i + 1] == lower_pw[i + 2]:
             patterns["repeated_chars"] = True
             break
 
     # ── L33TSPEAK CHECK ──────────────────────────────────────
-    # Reverse l33t substitutions and check if result is a dictionary word
+    # Count actual substitutions, then check if l33t-reversed form
+    # contains a dictionary word (min 2 substitutions required)
     cleaned = password.translate(LEET_REVERSE)
     if cleaned != password:
-        tier1 = load_wordlist(f"{wordlist_dir}/tier1_top1000.txt")
-        if cleaned.lower() in tier1:
-            patterns["leet_speak"] = True
+        substitutions = sum(1 for a, b in zip(password, cleaned) if a != b)
+        cleaned_lower = cleaned.lower()
+        if substitutions >= 2:
+            if cleaned_lower in dictionary or cleaned_lower in tier1:
+                patterns["leet_speak"] = True
+            else:
+                # Check if any dictionary word is a substring of the cleaned form
+                for i in range(len(cleaned_lower)):
+                    for j in range(i + 4, min(i + 20, len(cleaned_lower) + 1)):
+                        if cleaned_lower[i:j] in dictionary:
+                            patterns["leet_speak"] = True
+                            break
+                    if patterns["leet_speak"]:
+                        break
 
     # ── SEQUENTIAL CHECK ─────────────────────────────────────
-    # Check for ascending sequences: "abc", "123", "bcd", etc.
     for i in range(len(lower_pw) - 2):
         c1, c2, c3 = ord(lower_pw[i]), ord(lower_pw[i + 1]), ord(lower_pw[i + 2])
-        # Ascending: a→b→c or 1→2→3
         if c2 - c1 == 1 and c3 - c2 == 1:
             patterns["sequential"] = True
             break
-        # Descending: c→b→a or 3→2→1
         if c1 - c2 == 1 and c2 - c3 == 1:
             patterns["sequential"] = True
             break
 
-    # ── COMMON WORD EMBEDDED CHECK ───────────────────────────
-    # Check if any common word appears as a substring of the password
-    tier1 = load_wordlist(f"{wordlist_dir}/tier1_top1000.txt")
+    # ── COMMON WORD EMBEDDED + PASSPHRASE CHECK ──────────────
+    # Check tier1 common passwords first
     for word in tier1:
         if word in lower_pw and len(word) >= 3:
             patterns["common_word_embedded"] = True
             break
 
+    # Check English dictionary for embedded words
+    cleaned = password.translate(LEET_REVERSE).lower()
+    for word in dictionary:
+        if len(word) < 4:
+            continue
+        if word in lower_pw or word in cleaned:
+            patterns["common_word_embedded"] = True
+            break
+
+    # Try passphrase decomposition on both raw and l33t-cleaned versions
+    words = decompose_words(password, dictionary)
+    if not words and cleaned != lower_pw:
+        words = decompose_words(cleaned, dictionary)
+    if words:
+        patterns["embedded_words"] = words
+
     # ── PREDICTABLE STRUCTURE CHECK ──────────────────────────
-    # Capital + lowercase word + numbers at end (e.g., "Password123")
-    # This is the #1 most common password structure pattern
-    if len(password) >= 5:
-        has_capital_start = password[0].isupper()
-        has_numbers_end = password[-1].isdigit()
-        middle = password[1:]
-        # Check if middle part has at least one lowercase and rest are lowercase+digits
-        if has_capital_start and has_numbers_end:
-            if any(c.islower() for c in middle) and all(c.islower() or c.isdigit() for c in middle):
+    # Capital + lowercase word + numbers at end (e.g., "Password123", "Password123!")
+    if len(password) >= 5 and password[0].isupper():
+        # Find where trailing digits start (strip trailing symbols)
+        rest = password[1:]
+        trailing_digits = ""
+        i = len(rest) - 1
+        while i >= 0 and not rest[i].isalpha():
+            if rest[i].isdigit():
+                trailing_digits = rest[i] + trailing_digits
+            i -= 1
+        middle = rest[:i + 1]
+        if trailing_digits and len(trailing_digits) >= 1:
+            if middle and any(c.islower() for c in middle) and all(c.islower() or c.isdigit() for c in middle):
                 patterns["predictable_structure"] = True
 
     return patterns

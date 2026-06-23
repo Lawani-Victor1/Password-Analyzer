@@ -15,6 +15,8 @@ THE CONCEPT:
   looks. This is the key innovation for your project.
 """
 
+GUESSES_PER_SECOND = 10_000_000_000
+
 
 def score_composition(analysis):
     """
@@ -95,11 +97,16 @@ def score_unpredictability(analysis):
     if patterns["sequential"]:
         pattern_score -= 1
 
+    # Passphrase penalty: multiple dictionary words = predictable
+    embedded = patterns.get("embedded_words", [])
+    if len(embedded) >= 2:
+        pattern_score -= 3
+
     score += max(0, pattern_score)
     return score
 
 
-def score_attack_resistance(attack):
+def score_attack_resistance(attack, analysis=None):
     """
     WHY:  This is the MOST IMPORTANT pillar (45% of total).
           A password that fails under real attack is weak — period.
@@ -124,6 +131,22 @@ def score_attack_resistance(attack):
 
     # ── BRUTE-FORCE RESISTANCE (15 pts) ──────────────────────────
     bf_time = attack["brute_force"]["crack_time_seconds"]
+
+    # Passphrase penalty: if password is made of dictionary words,
+    # brute-force time overestimates security — attackers use word
+    # combinations, not character-by-character search.
+    is_passphrase = False
+    if analysis:
+        embedded = analysis.get("patterns", {}).get("embedded_words", [])
+        if len(embedded) >= 2:
+            is_passphrase = True
+            # Approximate brute-force via word combinations
+            word_count = len(embedded)
+            dict_size = 10000  # typical attacker's wordlist
+            word_keyspace = dict_size ** word_count
+            word_bf_time = word_keyspace / GUESSES_PER_SECOND
+            bf_time = min(bf_time, word_bf_time)
+
     if bf_time >= 31536000:  # 1 year+
         score += 15
     elif bf_time >= 2592000:  # 1 month+
@@ -156,6 +179,11 @@ def score_red_flags(analysis):
         score -= 4
     if analysis.get("only_first_upper", False):
         score -= 3
+
+    # Passphrase penalty: multiple dictionary words in sequence
+    embedded = patterns.get("embedded_words", [])
+    if len(embedded) >= 2:
+        score -= 5
 
     return max(0, score)
 
@@ -251,6 +279,10 @@ def generate_feedback(analysis, attack):
         weaknesses.append("Contains sequential characters ('abc', '321')")
         suggestions.append("Avoid letter or number sequences — they're predictable")
 
+    if analysis["patterns"]["leet_speak"]:
+        weaknesses.append("Contains leetspeak substitutions — easily reversed by attackers")
+        suggestions.append("Leetspeak (p@ssw0rd) doesn't fool modern attackers — they reverse it automatically")
+
     if analysis["patterns"]["predictable_structure"]:
         weaknesses.append("Follows Capital+word+numbers structure — extremely common")
         suggestions.append("Don't just capitalize the first letter and add numbers at the end")
@@ -258,6 +290,19 @@ def generate_feedback(analysis, attack):
     if analysis["patterns"]["common_word_embedded"]:
         weaknesses.append("Contains a common dictionary word")
         suggestions.append("Avoid real words entirely. Use random character strings.")
+
+    # ── PASSPHRASE DETECTED ──────────────────────────────────────
+    embedded = analysis["patterns"].get("embedded_words", [])
+    if len(embedded) >= 2:
+        words_str = ", ".join(embedded[:4])
+        weaknesses.append(
+            f"Password is a passphrase of {len(embedded)} dictionary words "
+            f"({words_str}) — vulnerable to word-combination attacks"
+        )
+        suggestions.append(
+            "Passphrases are better than single words but still weak against "
+            "word-combination attacks. Use random character strings instead."
+        )
 
     # ── LOW ENTROPY ──────────────────────────────────────────────
     if analysis["entropy"] < 36:
@@ -280,7 +325,7 @@ def calculate_score(analysis_result, attack_result):
     """
     comp = score_composition(analysis_result)
     unpre = score_unpredictability(analysis_result)
-    resist = score_attack_resistance(attack_result)
+    resist = score_attack_resistance(attack_result, analysis_result)
     reds = score_red_flags(analysis_result)
 
     total = comp + unpre + resist + reds
