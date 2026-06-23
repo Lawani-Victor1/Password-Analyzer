@@ -93,6 +93,24 @@ def rule_based_attack(password, wordlist_dir="wordlists"):
         ("R9: Append 2024", lambda w: w + "2024"),
         ("R9: Append 2025", lambda w: w + "2025"),
         ("R9: Append 2026", lambda w: w + "2026"),
+        # Prepend common symbols
+        ("R10: Prepend @", lambda w: "@" + w),
+        ("R10: Prepend !", lambda w: "!" + w),
+        ("R10: Prepend #", lambda w: "#" + w),
+        # Compound: prepend symbol + capitalize + append numbers
+        ("R11: @ + Capitalize + 12", lambda w: "@" + w.capitalize() + "12"),
+        ("R11: @ + Capitalize + 123", lambda w: "@" + w.capitalize() + "123"),
+        ("R11: ! + Capitalize + 12", lambda w: "!" + w.capitalize() + "12"),
+        ("R11: ! + Capitalize + 123", lambda w: "!" + w.capitalize() + "123"),
+        ("R11: # + Capitalize + 12", lambda w: "#" + w.capitalize() + "12"),
+        ("R11: # + Capitalize + 123", lambda w: "#" + w.capitalize() + "123"),
+        # Compound: symbol + word (lowercase) + numbers
+        ("R12: @ + word + 12", lambda w: "@" + w + "12"),
+        ("R12: @ + word + 123", lambda w: "@" + w + "123"),
+        ("R12: ! + word + 12", lambda w: "!" + w + "12"),
+        ("R12: ! + word + 123", lambda w: "!" + w + "123"),
+        ("R12: # + word + 12", lambda w: "#" + w + "12"),
+        ("R12: # + word + 123", lambda w: "#" + w + "123"),
     ]
 
     # Load Tier 1 + Tier 2 wordlists as base words
