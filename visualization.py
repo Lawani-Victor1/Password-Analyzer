@@ -43,10 +43,10 @@ def display_strength_meter(final_score):
     else:
         color = "bright_green"
 
-    bar_len = 40
+    bar_len = 30
     filled = int(bar_len * total / 100)
-    bar = "█" * filled + "░" * (bar_len - filled)
-    styled_bar = f"[{color}]{bar}[/{color}]"
+    bar = "=" * filled + "-" * (bar_len - filled)
+    styled_bar = f"[{color}][{bar}][/{color}]"
 
     console.print(Panel(
         f"\n  Overall Strength: {styled_bar}  {total}/100\n"
@@ -79,10 +79,11 @@ def display_pillar_breakdown(final_score):
 
     for key, max_val in max_scores.items():
         val = pillars[key]
-        bar_len = 30
+        bar_len = 20
         filled = int(bar_len * val / max_val)
-        bar = "█" * filled + "░" * (bar_len - filled)
-        console.print(f"  {labels[key]} {bar}  {val}/{max_val}")
+        bar = "=" * filled + "-" * (bar_len - filled)
+        bar_color = "red" if val <= max_val * 0.3 else "yellow" if val <= max_val * 0.6 else "green"
+        console.print(f"  [{bar_color}]{labels[key]} [{bar}]  {val}/{max_val}[/{bar_color}]")
 
 
 def display_attack_log(attack_result):
