@@ -16,7 +16,6 @@ THE CONCEPT:
 import os
 from rich.console import Console
 from rich.table import Table
-from rich.progress_bar import ProgressBar
 from rich.panel import Panel
 from rich.layout import Layout
 
@@ -44,11 +43,13 @@ def display_strength_meter(final_score):
     else:
         color = "bright_green"
 
-    progress = ProgressBar(total=100, completed=total, width=40)
-    styled_progress = f"[{color}]{progress}[/{color}]"
+    bar_len = 40
+    filled = int(bar_len * total / 100)
+    bar = "█" * filled + "░" * (bar_len - filled)
+    styled_bar = f"[{color}]{bar}[/{color}]"
 
     console.print(Panel(
-        f"\n  Overall Strength: {styled_progress}  {total}/100\n"
+        f"\n  Overall Strength: {styled_bar}  {total}/100\n"
         f"  Classification: [bold {color}]{classification}[/bold {color}]\n",
         title="[bold]Password Strength Report[/bold]",
         border_style=color,
@@ -78,7 +79,9 @@ def display_pillar_breakdown(final_score):
 
     for key, max_val in max_scores.items():
         val = pillars[key]
-        bar = ProgressBar(total=max_val, completed=val, width=30)
+        bar_len = 30
+        filled = int(bar_len * val / max_val)
+        bar = "█" * filled + "░" * (bar_len - filled)
         console.print(f"  {labels[key]} {bar}  {val}/{max_val}")
 
 

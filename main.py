@@ -22,6 +22,7 @@ THE CONCEPT:
 """
 
 import os
+import getpass
 import sys
 
 from rich.console import Console
@@ -106,7 +107,7 @@ def main():
     while True:
         # ── GET PASSWORD ──────────────────────────────────────────
         try:
-            password = input("Enter password to analyze: ")
+            password = getpass.getpass("Enter password to analyze: ")
         except (EOFError, KeyboardInterrupt):
             console.print("\n[yellow]Goodbye![/yellow]")
             break
